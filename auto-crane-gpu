@@ -1,0 +1,23 @@
+#!/bin/bash
+#SBATCH -J particle-gpu
+#SBATCH -o auto-particle-gpu.stdout
+#SBATCH -n 1         
+#SBATCH -p gpu_k20
+#SBATCH -t 00:20:00
+#SBATCH --gres=gpu
+#SBATCH --mem=4gb
+
+module load cuda/8.0
+
+rm gpusum.txt
+./gpu -n 10000 -s gpusum.txt
+./gpu -n 20000 -s gpusum.txt
+./gpu -n 40000 -s gpusum.txt
+./gpu -n 80000 -s gpusum.txt
+./gpu -n 160000 -s gpusum.txt
+./serial -n 10000 -s gpusum.txt
+./serial -n 20000 -s gpusum.txt
+./serial -n 40000 -s gpusum.txt
+./serial -n 80000 -s gpusum.txt
+./serial -n 160000 -s gpusum.txt
+./autograder -v gpu -s gpusum.txt

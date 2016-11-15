@@ -1,0 +1,11 @@
+#!/bin/bash
+#SBATCH -J particle-serial
+#SBATCH -o particle-serial.stdout
+#SBATCH -n 1         
+#SBATCH -p gpu_k20
+#SBATCH -t 00:10:00
+#SBATCH --mem=4gb
+
+module load cuda
+./serial -n 2000 -o serial.txt
+./autocorrect -s serial.txt

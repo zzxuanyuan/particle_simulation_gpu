@@ -1,0 +1,14 @@
+#!/bin/bash
+#SBATCH -J particle-gpu
+#SBATCH -o particle-gpu.stdout
+#SBATCH -n 1         
+#SBATCH -p gpu_k20
+#SBATCH -t 00:10:00     
+#SBATCH --gres=gpu
+#SBATCH --mem=4gb
+
+module load cuda
+nvprof ./gpu -n 2000 -o gpu.txt
+#./gpu -n 100 -o gpu.txt
+#./gpu -n 10000 -o gpu.txt
+./autocorrect -s gpu.txt

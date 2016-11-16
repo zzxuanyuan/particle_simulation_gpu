@@ -9,6 +9,7 @@
 
 module load cuda
 nvprof ./gpu -n 2000 -o gpu.txt
+#./gpu -n 2000 -o gpu.txt
 #./gpu -n 100 -o gpu.txt
 #./gpu -n 10000 -o gpu.txt
 ./autocorrect -s gpu.txt

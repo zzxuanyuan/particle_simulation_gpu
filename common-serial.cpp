@@ -112,7 +112,6 @@ void apply_force( particle_t &particle, particle_t &neighbor , double *dmin, dou
     double coef = ( 1 - cutoff / r ) / r2 / mass;
     particle.ax += coef * dx;
     particle.ay += coef * dy;
-    printf("dx=%f,dy=%f,r2=%f,coef=%f,ax=%f,ay=%f\n",dx,dy,r2,coef,particle.ax,particle.ay);//##
 }
 
 //

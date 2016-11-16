@@ -17,14 +17,6 @@ extern double size;
 //
 //  benchmarking program
 //
-/*
-void swap(particle_t *sorted_particles, particle_t *d_particles)
-{
-	particle_t *temp = sorted_particles;
-	sorted_particles = d_particles;
-	d_particles = temp;
-}
-*/
 void sort_particles(int *bin_index, int *particle_index, int n)
 {
 	thrust::sort_by_key(thrust::device_ptr<int>(bin_index),
@@ -223,7 +215,6 @@ int main( int argc, char **argv )
 	double size = sqrt( density*n );
 	int bpr = ceil(size/cutoff);
 	int num_bins = bpr*bpr;
-	printf("n=%d, size=%f, bpr=%d, num_bins=%d\n",n,size,bpr,num_bins);//##
 	//	thrust::pointer< host_vector<particle_t*> > bins = new thrust::host_vector<particle_t*>[numbins];
 	//	thrust::device_ptr< thrust::device_vector<particle_t*> > d_bins = thrust::device_malloc< thrust::device_vector<particle_t*> >(numbins);
 
@@ -248,108 +239,25 @@ int main( int argc, char **argv )
 	//
 	cudaThreadSynchronize();
 	double simulation_time = read_timer( );
-/*
-	int *bin_index_host = (int *)malloc(n * sizeof(int));//##
-	int *particle_index_host = (int *)malloc(n * sizeof(int));//##
-	double *r2_host = (double *)malloc(n * sizeof(double));//##
-	double *coef_host = (double *)malloc(n * sizeof(double));//##
-	int *bin_start_host = (int *)malloc(num_bins * sizeof(int));//##
-	int *bin_end_host = (int *)malloc(num_bins * sizeof(int));//##
-	particle_t *d_particles_host = (particle_t *)malloc(n * sizeof(particle_t));//##
-	particle_t *sorted_particles_host = (particle_t *)malloc(n * sizeof(particle_t));//##
-*/
 	for( int step = 0; step < NSTEPS; step++ )
 	{
 
-		// clear bins at each time step
-		//		for (int m = 0; m < numbins; m++)
-		//			bins[m].clear();
-
-		// place particles in bins
-		//		for (int i = 0; i < n; i++)
-		//			bins[binNum(particles[i],bpr)].push_back(particles + i);
-
-		//
-		//  compute forces
-		//
-
-		//		cudaMemcpy(d_bins, bins, numbins * sizeof(thrust::host_vector<particle_t*>), cudaMemcpyHostToDevice);
 		int blks = (n + NUM_THREADS - 1) / NUM_THREADS;
 
 		calculate_bin_index <<< blks, NUM_THREADS >>> (bin_index, particle_index, d_particles, n, bpr);
-//		cudaMemcpy(bin_index_host, bin_index, n * sizeof(int), cudaMemcpyDeviceToHost);//##
-//		cudaMemcpy(particle_index_host, particle_index, n * sizeof(int), cudaMemcpyDeviceToHost);//##
-/*
-		for(int i = 0; i < n; ++i) {
-			printf("1.bin_index_host[%d]=%d, particle_index[%d]=%d\n",i,bin_index_host[i],i,particle_index_host[i]);//##
-		}
-*/
 		sort_particles(bin_index, particle_index, n);
 
-//		cudaMemcpy(bin_index_host, bin_index, n * sizeof(int), cudaMemcpyDeviceToHost);//##
-//		cudaMemcpy(particle_index_host, particle_index, n * sizeof(int), cudaMemcpyDeviceToHost);//##
-/*
-		for(int i = 0; i < n; ++i) {
-			printf("2.bin_index_host[%d]=%d, particle_index[%d]=%d\n",i,bin_index_host[i],i,particle_index_host[i]);//##
-		}
-*/
-//		cudaMemcpy(d_particles_host, d_particles, n * sizeof(particle_t), cudaMemcpyDeviceToHost);//##
-/*
-		for(int i = 0; i < n; ++i) {
-			printf("d_particles_host[%d]=%f,%f,%f,%f,%f,%f(x,y,vx,vy,ax,ay)\n",i,d_particles_host[i].x,d_particles_host[i].y,d_particles_host[i].vx,d_particles_host[i].vy,d_particles_host[i].ax,d_particles_host[i].ay);//##
-		}
-*/
 		cudaMemset(bin_start, 0xffffffff, num_bins * sizeof(int));
 		int smemSize = sizeof(int)*(NUM_THREADS+1);
 		reorder_data_calc_bin <<< blks, NUM_THREADS, smemSize >>> (bin_start, bin_end, sorted_particles, bin_index, particle_index, d_particles, n, num_bins);
 
-//		cudaMemcpy(bin_start_host, bin_start, num_bins * sizeof(int), cudaMemcpyDeviceToHost);//##
-//		cudaMemcpy(bin_end_host, bin_end, num_bins * sizeof(int), cudaMemcpyDeviceToHost);//##
-/*
-		for(int i = 0; i < num_bins; ++i) {
-			printf("bin_start_host[%d]=%d, bin_end_host[%d]=%d\n",i,bin_start_host[i],i,bin_end_host[i]);//##
-		}
-*/
-//		cudaMemcpy(sorted_particles_host, sorted_particles, n * sizeof(particle_t), cudaMemcpyDeviceToHost);//##
-/*
-		for(int i = 0; i < n; ++i) {
-			printf("1.sorted_particles_host[%d]=%f,%f,%f,%f,%f,%f(x,y,vx,vy,ax,ay)\n",i,sorted_particles_host[i].x,sorted_particles_host[i].y,sorted_particles_host[i].vx,sorted_particles_host[i].vy,sorted_particles_host[i].ax,sorted_particles_host[i].ay);//##
-		}
-*/
 		compute_forces_gpu <<< blks, NUM_THREADS >>> (sorted_particles, n, bpr, bin_start, bin_end);
-
-//		cudaMemcpy(sorted_particles_host, sorted_particles, n * sizeof(particle_t), cudaMemcpyDeviceToHost);//##
-/*
-		for(int i = 0; i < n; ++i) {
-			printf("2.sorted_particles_host[%d]=%f,%f,%f,%f,%f,%f(x,y,vx,vy,ax,ay)\n",i,sorted_particles_host[i].x,sorted_particles_host[i].y,sorted_particles_host[i].vx,sorted_particles_host[i].vy,sorted_particles_host[i].ax,sorted_particles_host[i].ay);//##
-		}
-*/
-//		cudaMemcpy(r2_host, r2, n * sizeof(double), cudaMemcpyDeviceToHost);//##
-/*
-		for(int i = 0; i < n; ++i) {
-			printf("r2_host[%d]=%f\n",i,r2_host[i]);//##
-		}
-*/
-//		cudaMemcpy(coef_host, coef, n * sizeof(double), cudaMemcpyDeviceToHost);//##
-/*
-		for(int i = 0; i < n; ++i) {
-			printf("coef_host[%d]=%f\n",i,coef_host[i]);//##
-		}
-*/
 
 		//
 		//  move particles
 		//
 		move_gpu <<< blks, NUM_THREADS >>> (sorted_particles, n, size);
 
-//		cudaMemcpy(sorted_particles_host, sorted_particles, n * sizeof(particle_t), cudaMemcpyDeviceToHost);//##
-/*
-		for(int i = 0; i < n; ++i) {
-			printf("3.sorted_particles_host[%d]=%f,%f,%f,%f,%f,%f(x,y,vx,vy,ax,ay)\n",i,sorted_particles_host[i].x,sorted_particles_host[i].y,sorted_particles_host[i].vx,sorted_particles_host[i].vy,sorted_particles_host[i].ax,sorted_particles_host[i].ay);//##
-		}
-*/
-
-//		swap(d_particles, sorted_particles);
 		//
 		// Swap particles between d_particles and sorted_particles
 		//
@@ -357,16 +265,6 @@ int main( int argc, char **argv )
         	sorted_particles = d_particles;
         	d_particles = temp;
 
-		//
-		//  save if necessary
-		//
-/*
-		if( fsave && (step%SAVEFREQ) == 0 ) {
-			// Copy the particles back to the CPU
-			cudaMemcpy(particles, d_particles, n * sizeof(particle_t), cudaMemcpyDeviceToHost);
-			save( fsave, n, particles);
-		}
-*/
 	}
 	if( fsave ) {
 		// Copy the particles back to the CPU

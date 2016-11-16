@@ -58,7 +58,6 @@ int main( int argc, char **argv )
     int bpr = ceil(size/cutoff);
     int numbins = bpr*bpr;
     vector<particle_t*> *bins = new vector<particle_t*>[numbins];
-    printf("size=%f,bpr=%d,numbins=%d\n",size,bpr,numbins);//##
     //
     //  simulate a number of time steps
     //
@@ -73,15 +72,6 @@ int main( int argc, char **argv )
       for (int m = 0; m < numbins; m++)
 	bins[m].clear();
 
-      vector<int> temp;
-      for (int i = 0; i < n; i++) {//##
-	temp.push_back(binNum(particles[i],bpr));//##
-	printf("binNum[%d]=%d\n",i,temp[i]);//##
-      }
-      sort(temp.begin(),temp.end());//##
-      for (int i = 0; i < n; i++) {//##
-	printf("temp[%d]=%d\n",i,temp[i]);//##
-      }
       // place particles in bins
       for (int i = 0; i < n; i++) 
 	bins[binNum(particles[i],bpr)].push_back(particles + i);

@@ -192,11 +192,11 @@ __global__ void compute_forces_gpu(double *pos, double *acc, int n, int bpr, int
 		{
 			int nbin = cbin + i + bpr*j;
 			int bin_st = tex1Dfetch(bin_start_tex, nbin);
-			int bin_et = tex1Dfetch(bin_end_tex, nbin);
-			for (int k = bin_st; k < bin_et; k++ ) {
-				double pos_2x = fetch_double(old_pos_tex, 2*k);
-				double pos_2y = fetch_double(old_pos_tex, 2*k+1);
-				if (bin_st >= 0) {
+			if (bin_st != 0xffffffff) {
+				int bin_et = tex1Dfetch(bin_end_tex, nbin);
+				for (int k = bin_st; k < bin_et; k++ ) {
+					double pos_2x = fetch_double(old_pos_tex, 2*k);
+					double pos_2y = fetch_double(old_pos_tex, 2*k+1);
 					apply_force_gpu( pos_1x, pos_1y, acc_x, acc_y, pos_2x, pos_2y );
 				}
 			}
@@ -455,6 +455,7 @@ int main( int argc, char **argv )
 	}
 
 	cudaThreadSynchronize();
+
 	simulation_time = read_timer( ) - simulation_time;
 
 	particle_t *particles = (particle_t*) malloc( n * sizeof(particle_t) );
@@ -470,7 +471,6 @@ int main( int argc, char **argv )
 		}
 		save( fsave, n, particles);
 	}
-
 
 	printf( "CPU-GPU copy time = %g seconds\n", copy_time);
 	printf( "n = %d, simulation time = %g seconds\n", n, simulation_time );

@@ -3,7 +3,6 @@
 #include <assert.h>
 #include <math.h>
 #include <vector>
-#include <algorithm>
 #include "common-serial.h"
 using namespace std;
 

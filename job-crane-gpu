@@ -8,9 +8,9 @@
 #SBATCH --mem=4gb
 
 module load cuda
-#nvprof --print-gpu-trace -o  particle-analysis.nvprof ./gpu -n 2000 -o gpu.txt
-nvprof --log-file particle-output.log ./gpu -n 2000 -o gpu.txt
-#./gpu -n 2000 -o gpu.txt
+#nvprof --print-gpu-trace -o particle-analysis.nvprof ./gpu -n 2000 -o gpu.txt
+#nvprof ./gpu -n 2000 -o gpu.txt
+./gpu -n 2000 -o gpu.txt
 #./gpu -n 100 -o gpu.txt
 #./gpu -n 10000 -o gpu.txt
 ./autocorrect -s gpu.txt

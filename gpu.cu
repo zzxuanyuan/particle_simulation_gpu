@@ -18,8 +18,17 @@ extern double size;
 static texture<int2, 1, cudaReadModeElementType> old_pos_tex;
 static texture<int2, 1, cudaReadModeElementType> old_vel_tex;
 static texture<int2, 1, cudaReadModeElementType> old_acc_tex;
+static texture<int,  1, cudaReadModeElementType> bin_index_tex;
+static texture<int,  1, cudaReadModeElementType> particle_index_tex;
 static texture<int,  1, cudaReadModeElementType> bin_start_tex;
 static texture<int,  1, cudaReadModeElementType> bin_end_tex;
+
+static __inline__ __device__ double fetch_double(texture<int2, 1> t, int i)
+{
+	int2 v = tex1Dfetch(t, i);
+	return __hiloint2double(v.y, v.x);
+}
+
 //
 //  benchmarking program
 //
@@ -125,12 +134,14 @@ __global__ void calculate_bin_index(int *bin_index, int *particle_index, double 
 {
 	int index = threadIdx.x + blockIdx.x * blockDim.x;
 	if(index >= n) return;
-	int cbin = binNum( d_pos[2*index],d_pos[2*index+1],bpr );
+	double pos_x = fetch_double(old_pos_tex, 2*index);
+	double pos_y = fetch_double(old_pos_tex, 2*index+1);
+	int cbin = binNum( pos_x,pos_y,bpr );
 	bin_index[index] = cbin;
 	particle_index[index] = index;
 }
 
-static __inline__ __device__ void apply_force_gpu(double &particle_x, double &particle_y, double &particle_ax, double &particle_ay, double &neighbor_x, double &neighbor_y, double &neighbor_ax, double &neighbor_ay)
+static __inline__ __device__ void apply_force_gpu(double &particle_x, double &particle_y, double &particle_ax, double &particle_ay, double &neighbor_x, double &neighbor_y)
 {
 	double dx = neighbor_x - particle_x;
 	double dy = neighbor_y - particle_y;
@@ -147,12 +158,6 @@ static __inline__ __device__ void apply_force_gpu(double &particle_x, double &pa
 	double coef = ( 1 - cutoff / r ) / r2 / mass;
 	particle_ax += coef * dx;
 	particle_ay += coef * dy;
-}
-
-static __inline__ __device__ double fetch_double(texture<int2, 1> t, int i)
-{
-	int2 v = tex1Dfetch(t, i);
-	return __hiloint2double(v.y, v.x);
 }
 
 __global__ void compute_forces_gpu(double *pos, double *acc, int n, int bpr, int *bin_start, int *bin_end)
@@ -177,7 +182,10 @@ __global__ void compute_forces_gpu(double *pos, double *acc, int n, int bpr, int
 	if (cbin >= bpr*(bpr-1))
 		highj = 0;
 
-	acc[2*tid] = acc[2*tid+1] = 0;
+//	acc[2*tid] = acc[2*tid+1] = 0;
+	double acc_x;
+	double acc_y;
+	acc_x = acc_y = 0;
 
 	for (int i = lowi; i <= highi; i++)
 		for (int j = lowj; j <= highj; j++)
@@ -188,11 +196,13 @@ __global__ void compute_forces_gpu(double *pos, double *acc, int n, int bpr, int
 			for (int k = bin_st; k < bin_et; k++ ) {
 				double pos_2x = fetch_double(old_pos_tex, 2*k);
 				double pos_2y = fetch_double(old_pos_tex, 2*k+1);
-				if (bin_start[nbin] >= 0) {
-					apply_force_gpu( pos_1x, pos_1y, acc[2*tid], acc[2*tid+1], pos_2x, pos_2y, acc[2*k], acc[2*k+1] );
+				if (bin_st >= 0) {
+					apply_force_gpu( pos_1x, pos_1y, acc_x, acc_y, pos_2x, pos_2y );
 				}
 			}
 		}
+	acc[2*tid] = acc_x;
+	acc[2*tid+1] = acc_y;
 }
 
 __global__ void move_gpu (double *pos, double *vel, double *acc, int n, double size)
@@ -352,9 +362,10 @@ int main( int argc, char **argv )
 
 		int blks = (n + NUM_THREADS - 1) / NUM_THREADS;
 
+		cudaBindTexture(0, old_pos_tex, d_pos, 2*n * sizeof(int2));
 //		calculate_bin_index <<< blks, NUM_THREADS >>> (bin_index, particle_index, d_particles, n, bpr);
 		calculate_bin_index <<< blks, NUM_THREADS >>> (bin_index, particle_index, d_pos, n, bpr);
-
+		cudaUnbindTexture(old_pos_tex);
 /*
 		cudaMemcpy(d_pos_host, d_pos, 2*n * sizeof(double), cudaMemcpyDeviceToHost);
 		cudaMemcpy(bin_index_host, bin_index, n * sizeof(int), cudaMemcpyDeviceToHost);
@@ -363,7 +374,11 @@ int main( int argc, char **argv )
 			printf("0.0.bin_index[%d]=%d,particle_index[%d]=%d,d_pos[%d].x=%f,d_pos[%d].y=%f\n",i,bin_index_host[i],i,particle_index_host[i],i,d_pos_host[2*i],i,d_pos_host[2*i+1]);
 		}
 */
+		cudaBindTexture(0, bin_index_tex, bin_index, n * sizeof(int));
+		cudaBindTexture(0, particle_index_tex, particle_index, n * sizeof(int));
 		sort_particles(bin_index, particle_index, n);
+		cudaUnbindTexture(bin_index_tex);
+		cudaUnbindTexture(particle_index_tex);
 /*
 		cudaMemcpy(bin_index_host, bin_index, n * sizeof(int), cudaMemcpyDeviceToHost);
 		cudaMemcpy(particle_index_host, particle_index, n * sizeof(int), cudaMemcpyDeviceToHost);

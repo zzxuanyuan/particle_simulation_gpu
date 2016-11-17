@@ -14,6 +14,12 @@
 #define NUM_THREADS 256
 
 extern double size;
+
+static texture<int2, 1, cudaReadModeElementType> old_pos_tex;
+static texture<int2, 1, cudaReadModeElementType> old_vel_tex;
+static texture<int2, 1, cudaReadModeElementType> old_acc_tex;
+static texture<int,  1, cudaReadModeElementType> bin_start_tex;
+static texture<int,  1, cudaReadModeElementType> bin_end_tex;
 //
 //  benchmarking program
 //
@@ -142,21 +148,25 @@ static __inline__ __device__ void apply_force_gpu(double &particle_x, double &pa
 	particle_ax += coef * dx;
 	particle_ay += coef * dy;
 }
-/*
-static __inline__ __device__ double fetch_double(texture<int2, 1> t, i)
+
+static __inline__ __device__ double fetch_double(texture<int2, 1> t, int i)
 {
 	int2 v = tex1Dfetch(t, i);
 	return __hiloint2double(v.y, v.x);
 }
-*/
+
 __global__ void compute_forces_gpu(double *pos, double *acc, int n, int bpr, int *bin_start, int *bin_end)
 {
 	// Get thread (particle) ID
 	int tid = threadIdx.x + blockIdx.x * blockDim.x;
 	if(tid >= n) return;
 
+	double pos_1x = fetch_double(old_pos_tex, 2*tid);
+	double pos_1y = fetch_double(old_pos_tex, 2*tid+1);
+
 	// find current particle's in, handle boundaries
-	int cbin = binNum( pos[2*tid], pos[2*tid+1], bpr );
+//	int cbin = binNum( pos[2*tid], pos[2*tid+1], bpr );
+	int cbin = binNum( pos_1x, pos_1y, bpr );
 	int lowi = -1, highi = 1, lowj = -1, highj = 1;
 	if (cbin < bpr)
 		lowj = 0;
@@ -173,9 +183,13 @@ __global__ void compute_forces_gpu(double *pos, double *acc, int n, int bpr, int
 		for (int j = lowj; j <= highj; j++)
 		{
 			int nbin = cbin + i + bpr*j;
-			for (int k = bin_start[nbin]; k < bin_end[nbin]; k++ ) {
+			int bin_st = tex1Dfetch(bin_start_tex, nbin);
+			int bin_et = tex1Dfetch(bin_end_tex, nbin);
+			for (int k = bin_st; k < bin_et; k++ ) {
+				double pos_2x = fetch_double(old_pos_tex, 2*k);
+				double pos_2y = fetch_double(old_pos_tex, 2*k+1);
 				if (bin_start[nbin] >= 0) {
-					apply_force_gpu( pos[2*tid], pos[2*tid+1], acc[2*tid], acc[2*tid+1], pos[2*k], pos[2*k+1], acc[2*k], acc[2*k+1] );
+					apply_force_gpu( pos_1x, pos_1y, acc[2*tid], acc[2*tid+1], pos_2x, pos_2y, acc[2*k], acc[2*k+1] );
 				}
 			}
 		}
@@ -377,7 +391,15 @@ int main( int argc, char **argv )
 			printf("2.sorted_pos[%d].x=%f,sorted_pos[%d].y=%f,sorted_vel[%d].x=%f,sorted_vel[%d].y=%f,sorted_acc[%d].x=%f,sorted_acc[%d].y=%f\n",i,sorted_pos_host[2*i],i,sorted_pos_host[2*i+1],i,sorted_vel_host[2*i],i,sorted_vel_host[2*i+1],i,sorted_acc_host[2*i],i,sorted_acc_host[2*i+1]);
 		}
 */
+		cudaBindTexture(0, old_pos_tex, sorted_pos, 2*n * sizeof(int2));
+		cudaBindTexture(0, bin_start_tex, bin_start, num_bins * sizeof(int));
+		cudaBindTexture(0, bin_end_tex, bin_end, num_bins * sizeof(int));
+
 		compute_forces_gpu <<< blks, NUM_THREADS >>> (sorted_pos, sorted_acc, n, bpr, bin_start, bin_end);
+
+		cudaUnbindTexture(old_pos_tex);
+		cudaUnbindTexture(bin_start_tex);
+		cudaUnbindTexture(bin_end_tex);
 /*
 		cudaMemcpy(sorted_pos_host, sorted_pos, 2*n * sizeof(double), cudaMemcpyDeviceToHost);
 		cudaMemcpy(sorted_vel_host, sorted_vel, 2*n * sizeof(double), cudaMemcpyDeviceToHost);

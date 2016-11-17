@@ -55,15 +55,11 @@ void init_particles_gpu(int n, double *pos, double *vel)
         //
         //  distribute particles evenly to ensure proper spacing
         //
-//        p[i].x = size*(1.+(k%sx))/(1+sx);
-//        p[i].y = size*(1.+(k/sx))/(1+sy);
 	pos[2*i] = size*(1.+(k%sx))/(1+sx);
 	pos[2*i+1] = size*(1.+(k/sx))/(1+sy);
         //
         //  assign random velocities within a bound
         //
-//        p[i].vx = drand48()*2-1;
-//        p[i].vy = drand48()*2-1;
 	vel[2*i] = drand48()*2-1;
 	vel[2*i+1] = drand48()*2-1;
     }
@@ -170,7 +166,6 @@ __global__ void compute_forces_gpu(double *pos, double *acc, int n, int bpr, int
 	double pos_1y = fetch_double(old_pos_tex, 2*tid+1);
 
 	// find current particle's in, handle boundaries
-//	int cbin = binNum( pos[2*tid], pos[2*tid+1], bpr );
 	int cbin = binNum( pos_1x, pos_1y, bpr );
 	int lowi = -1, highi = 1, lowj = -1, highj = 1;
 	if (cbin < bpr)
@@ -182,7 +177,6 @@ __global__ void compute_forces_gpu(double *pos, double *acc, int n, int bpr, int
 	if (cbin >= bpr*(bpr-1))
 		highj = 0;
 
-//	acc[2*tid] = acc[2*tid+1] = 0;
 	double acc_x;
 	double acc_y;
 	acc_x = acc_y = 0;
@@ -212,46 +206,39 @@ __global__ void move_gpu (double *pos, double *vel, double *acc, int n, double s
 	int tid = threadIdx.x + blockIdx.x * blockDim.x;
 	if(tid >= n) return;
 
-//	particle_t * p = &particles[tid];
-	
 	//
 	//  slightly simplified Velocity Verlet integration
 	//  conserves energy better than explicit Euler method
 	//
-//	p->vx += p->ax * dt;
-//	p->vy += p->ay * dt;
-//	p->x  += p->vx * dt;
-//	p->y  += p->vy * dt;
-	vel[2*tid]   += acc[2*tid] * dt;
-	vel[2*tid+1] += acc[2*tid+1] * dt;
-	pos[2*tid]   += vel[2*tid] * dt;
-	pos[2*tid+1] += vel[2*tid+1] * dt;
+	double acc_x = fetch_double(old_acc_tex, 2*tid);
+	double acc_y = fetch_double(old_acc_tex, 2*tid+1);
+	double vel_x = fetch_double(old_vel_tex, 2*tid);
+	double vel_y = fetch_double(old_vel_tex, 2*tid+1);
+	double pos_x = fetch_double(old_pos_tex, 2*tid);
+	double pos_y = fetch_double(old_pos_tex, 2*tid+1);
+	vel_x += acc_x * dt;
+	vel_y += acc_y * dt;
+	pos_x += vel_x * dt;
+	pos_y += vel_y * dt;
 
 	//
 	//  bounce from walls
 	//
-/*
-	while( p->x < 0 || p->x > size )
+	while( pos_x < 0 || pos_x > size )
 	{
-		p->x  = p->x < 0 ? -(p->x) : 2*size-p->x;
-		p->vx = -(p->vx);
+		pos_x = pos_x < 0 ? -(pos_x) : 2*size-pos_x;
+		vel_x = -(vel_x);
 	}
-	while( p->y < 0 || p->y > size )
+	while( pos_y < 0 || pos_y > size )
 	{
-		p->y  = p->y < 0 ? -(p->y) : 2*size-p->y;
-		p->vy = -(p->vy);
+		pos_y = pos_y < 0 ? -(pos_y) : 2*size-pos_y;
+		vel_y = -(vel_y);
 	}
-*/
-	while( pos[2*tid] < 0 || pos[2*tid] > size )
-	{
-		pos[2*tid] = pos[2*tid] < 0 ? -(pos[2*tid]) : 2*size-pos[2*tid];
-		vel[2*tid] = -(vel[2*tid]);
-	}
-	while( pos[2*tid+1] < 0 || pos[2*tid+1] > size )
-	{
-		pos[2*tid+1] = pos[2*tid+1] < 0 ? -(pos[2*tid+1]) : 2*size-pos[2*tid+1];
-		vel[2*tid+1] = -(vel[2*tid+1]);
-	}
+
+	vel[2*tid] = vel_x;
+	vel[2*tid+1] = vel_y;
+	pos[2*tid] = pos_x;
+	pos[2*tid+1] = pos_y;
 }
 
 
@@ -277,13 +264,11 @@ int main( int argc, char **argv )
 
 	FILE *fsave = savename ? fopen( savename, "w" ) : NULL;
 	FILE *fsum = sumname ? fopen(sumname,"a") : NULL;
-//	particle_t *particles = (particle_t*) malloc( n * sizeof(particle_t) );
 	double *pos = (double *) malloc( 2*n * sizeof(double) );
 	double *vel = (double *) malloc( 2*n * sizeof(double) );
 	double *acc = (double *) malloc( 2*n * sizeof(double) );
 
 	// GPU particle data structure
-//	particle_t * d_particles;
 	double *d_pos;
 	double *d_vel;
 	double *d_acc;
@@ -291,7 +276,6 @@ int main( int argc, char **argv )
 	cudaMalloc((void **) &d_pos, 2*n * sizeof(double));
 	cudaMalloc((void **) &d_vel, 2*n * sizeof(double));
 	cudaMalloc((void **) &d_acc, 2*n * sizeof(double));
-//	particle_t * sorted_particles;
 	double *sorted_pos;
 	double *sorted_vel;
 	double *sorted_acc;
@@ -308,20 +292,12 @@ int main( int argc, char **argv )
 
 	set_size( n );
 
-//	init_particles( n, particles );
 	init_particles_gpu(n, pos, vel);
-/*
-	for(int i=0; i<n; ++i)
-		printf("1.pos[%d].x=%f,pos[%d].y=%f,vel[%d].x=%f,vel[%d].y=%f,acc[%d].x=%f,acc[%d].y=%f\n",i,pos[2*i],i,pos[2*i+1],i,vel[2*i],i,vel[2*i+1],i,acc[2*i],i,acc[2*i+1]);
-*/
 
 	// create spatial bins (of size cutoff by cutoff)
 	double size = sqrt( density*n );
 	int bpr = ceil(size/cutoff);
 	int num_bins = bpr*bpr;
-	//	thrust::pointer< host_vector<particle_t*> > bins = new thrust::host_vector<particle_t*>[numbins];
-	//	thrust::device_ptr< thrust::device_vector<particle_t*> > d_bins = thrust::device_malloc< thrust::device_vector<particle_t*> >(numbins);
-
 	int *bin_start;
 	int *bin_end;
 	cudaMalloc((void **) &bin_start, num_bins * sizeof(int));
@@ -333,21 +309,9 @@ int main( int argc, char **argv )
 	double copy_time = read_timer( );
 
 	// Copy the particles to the GPU
-//	cudaMemcpy(d_particles, particles, n * sizeof(particle_t), cudaMemcpyHostToDevice);
 	cudaMemcpy(d_pos, pos, 2*n * sizeof(double), cudaMemcpyHostToDevice);
 	cudaMemcpy(d_vel, vel, 2*n * sizeof(double), cudaMemcpyHostToDevice);
 	cudaMemcpy(d_acc, acc, 2*n * sizeof(double), cudaMemcpyHostToDevice);
-
-	int *bin_index_host = (int *) malloc( n * sizeof(int) );//##
-	int *particle_index_host = (int *) malloc( n * sizeof(int) );//##
-	int *bin_start_host = (int *) malloc( num_bins * sizeof(int) );//##
-	int *bin_end_host = (int *) malloc( num_bins * sizeof(int) );//##
-	double *d_pos_host = (double *) malloc( 2*n * sizeof(double) );//##
-	double *d_vel_host = (double *) malloc( 2*n * sizeof(double) );//##
-	double *d_acc_host = (double *) malloc( 2*n * sizeof(double) );//##
-	double *sorted_pos_host = (double *) malloc( 2*n * sizeof(double) );//##
-	double *sorted_vel_host = (double *) malloc( 2*n * sizeof(double) );//##
-	double *sorted_acc_host = (double *) malloc( 2*n * sizeof(double) );//##
 
 	cudaThreadSynchronize();
 	copy_time = read_timer( ) - copy_time;
@@ -363,49 +327,19 @@ int main( int argc, char **argv )
 		int blks = (n + NUM_THREADS - 1) / NUM_THREADS;
 
 		cudaBindTexture(0, old_pos_tex, d_pos, 2*n * sizeof(int2));
-//		calculate_bin_index <<< blks, NUM_THREADS >>> (bin_index, particle_index, d_particles, n, bpr);
 		calculate_bin_index <<< blks, NUM_THREADS >>> (bin_index, particle_index, d_pos, n, bpr);
 		cudaUnbindTexture(old_pos_tex);
-/*
-		cudaMemcpy(d_pos_host, d_pos, 2*n * sizeof(double), cudaMemcpyDeviceToHost);
-		cudaMemcpy(bin_index_host, bin_index, n * sizeof(int), cudaMemcpyDeviceToHost);
-		cudaMemcpy(particle_index_host, particle_index, n * sizeof(int), cudaMemcpyDeviceToHost);
-		for(int i=0; i<n; ++i){
-			printf("0.0.bin_index[%d]=%d,particle_index[%d]=%d,d_pos[%d].x=%f,d_pos[%d].y=%f\n",i,bin_index_host[i],i,particle_index_host[i],i,d_pos_host[2*i],i,d_pos_host[2*i+1]);
-		}
-*/
+
 		cudaBindTexture(0, bin_index_tex, bin_index, n * sizeof(int));
 		cudaBindTexture(0, particle_index_tex, particle_index, n * sizeof(int));
 		sort_particles(bin_index, particle_index, n);
 		cudaUnbindTexture(bin_index_tex);
 		cudaUnbindTexture(particle_index_tex);
-/*
-		cudaMemcpy(bin_index_host, bin_index, n * sizeof(int), cudaMemcpyDeviceToHost);
-		cudaMemcpy(particle_index_host, particle_index, n * sizeof(int), cudaMemcpyDeviceToHost);
-		for(int i=0; i<n; ++i){
-			printf("0.5.bin_index[%d]=%d,particle_index[%d]=%d,d_pos[%d].x=%f,d_pos[%d].y=%f\n",i,bin_index_host[i],i,particle_index_host[i],i,d_pos_host[2*i],i,d_pos_host[2*i+1]);
-		}
-*/
+
 		cudaMemset(bin_start, 0xffffffff, num_bins * sizeof(int));
 		int smemSize = sizeof(int)*(NUM_THREADS+1);
 		reorder_data_calc_bin <<< blks, NUM_THREADS, smemSize >>> (bin_start, bin_end, sorted_pos, sorted_vel, sorted_acc, bin_index, particle_index, d_pos, d_vel, d_acc, n, num_bins);
-/*
-		cudaMemcpy(bin_index_host, bin_index, n * sizeof(int), cudaMemcpyDeviceToHost);
-		cudaMemcpy(particle_index_host, particle_index, n * sizeof(int), cudaMemcpyDeviceToHost);
-		cudaMemcpy(sorted_pos_host, sorted_pos, 2*n * sizeof(double), cudaMemcpyDeviceToHost);
-		cudaMemcpy(sorted_vel_host, sorted_vel, 2*n * sizeof(double), cudaMemcpyDeviceToHost);
-		cudaMemcpy(sorted_acc_host, sorted_acc, 2*n * sizeof(double), cudaMemcpyDeviceToHost);
-		cudaMemcpy(d_pos_host, d_pos, 2*n * sizeof(double), cudaMemcpyDeviceToHost);
-		cudaMemcpy(d_vel_host, d_vel, 2*n * sizeof(double), cudaMemcpyDeviceToHost);
-		cudaMemcpy(d_acc_host, d_acc, 2*n * sizeof(double), cudaMemcpyDeviceToHost);
-		cudaMemcpy(bin_start_host, bin_start, num_bins * sizeof(int), cudaMemcpyDeviceToHost);
-		cudaMemcpy(bin_end_host, bin_end, num_bins * sizeof(int), cudaMemcpyDeviceToHost);
-		for(int i=0; i<n; ++i){
-			printf("2.bin_start[%d]=%d,bin_end[%d]=%d\n",i,bin_start_host[i],i,bin_end_host[i]);
-			printf("2.d_pos[%d].x=%f,d_pos[%d].y=%f,d_vel[%d].x=%f,d_vel[%d].y=%f,d_acc[%d].x=%f,d_acc[%d].y=%f\n",i,d_pos_host[2*i],i,d_pos_host[2*i+1],i,d_vel_host[2*i],i,d_vel_host[2*i+1],i,d_acc_host[2*i],i,d_acc_host[2*i+1]);
-			printf("2.sorted_pos[%d].x=%f,sorted_pos[%d].y=%f,sorted_vel[%d].x=%f,sorted_vel[%d].y=%f,sorted_acc[%d].x=%f,sorted_acc[%d].y=%f\n",i,sorted_pos_host[2*i],i,sorted_pos_host[2*i+1],i,sorted_vel_host[2*i],i,sorted_vel_host[2*i+1],i,sorted_acc_host[2*i],i,sorted_acc_host[2*i+1]);
-		}
-*/
+
 		cudaBindTexture(0, old_pos_tex, sorted_pos, 2*n * sizeof(int2));
 		cudaBindTexture(0, bin_start_tex, bin_start, num_bins * sizeof(int));
 		cudaBindTexture(0, bin_end_tex, bin_end, num_bins * sizeof(int));
@@ -415,33 +349,21 @@ int main( int argc, char **argv )
 		cudaUnbindTexture(old_pos_tex);
 		cudaUnbindTexture(bin_start_tex);
 		cudaUnbindTexture(bin_end_tex);
-/*
-		cudaMemcpy(sorted_pos_host, sorted_pos, 2*n * sizeof(double), cudaMemcpyDeviceToHost);
-		cudaMemcpy(sorted_vel_host, sorted_vel, 2*n * sizeof(double), cudaMemcpyDeviceToHost);
-		cudaMemcpy(sorted_acc_host, sorted_acc, 2*n * sizeof(double), cudaMemcpyDeviceToHost);
-		for(int i=0; i<n; ++i){
-			printf("3.sorted_pos[%d].x=%f,sorted_pos[%d].y=%f,sorted_vel[%d].x=%f,sorted_vel[%d].y=%f,sorted_acc[%d].x=%f,sorted_acc[%d].y=%f\n",i,sorted_pos_host[2*i],i,sorted_pos_host[2*i+1],i,sorted_vel_host[2*i],i,sorted_vel_host[2*i+1],i,sorted_acc_host[2*i],i,sorted_acc_host[2*i+1]);
-		}
-*/
 
 		//
 		//  move particles
 		//
+		cudaBindTexture(0, old_pos_tex, sorted_pos, 2*n * sizeof(int2));
+		cudaBindTexture(0, old_vel_tex, sorted_vel, 2*n * sizeof(int2));
+		cudaBindTexture(0, old_acc_tex, sorted_acc, 2*n * sizeof(int2));
 		move_gpu <<< blks, NUM_THREADS >>> (sorted_pos, sorted_vel, sorted_acc, n, size);
-/*
-		cudaMemcpy(sorted_pos_host, sorted_pos, 2*n * sizeof(double), cudaMemcpyDeviceToHost);
-		cudaMemcpy(sorted_vel_host, sorted_vel, 2*n * sizeof(double), cudaMemcpyDeviceToHost);
-		cudaMemcpy(sorted_acc_host, sorted_acc, 2*n * sizeof(double), cudaMemcpyDeviceToHost);
-		for(int i=0; i<n; ++i){
-			printf("4.sorted_pos[%d].x=%f,sorted_pos[%d].y=%f,sorted_vel[%d].x=%f,sorted_vel[%d].y=%f,sorted_acc[%d].x=%f,sorted_acc[%d].y=%f\n",i,sorted_pos_host[2*i],i,sorted_pos_host[2*i+1],i,sorted_vel_host[2*i],i,sorted_vel_host[2*i+1],i,sorted_acc_host[2*i],i,sorted_acc_host[2*i+1]);
-		}
-*/
+		cudaUnbindTexture(old_pos_tex);
+		cudaUnbindTexture(old_vel_tex);
+		cudaUnbindTexture(old_acc_tex);
+
 		//
 		// Swap particles between d_particles and sorted_particles
 		//
-//        	particle_t *temp = sorted_particles;
-//        	sorted_particles = d_particles;
-//        	d_particles = temp;
 		double *temp_pos = sorted_pos;
 		double *temp_vel = sorted_vel;
 		double *temp_acc = sorted_acc;
@@ -455,8 +377,6 @@ int main( int argc, char **argv )
 	}
 
 	cudaThreadSynchronize();
-
-	simulation_time = read_timer( ) - simulation_time;
 
 	particle_t *particles = (particle_t*) malloc( n * sizeof(particle_t) );
 	if( fsave ) {
@@ -472,6 +392,9 @@ int main( int argc, char **argv )
 		save( fsave, n, particles);
 	}
 
+	simulation_time = read_timer( ) - simulation_time;
+
+
 	printf( "CPU-GPU copy time = %g seconds\n", copy_time);
 	printf( "n = %d, simulation time = %g seconds\n", n, simulation_time );
 
@@ -481,21 +404,9 @@ int main( int argc, char **argv )
 	if (fsum)
 		fclose( fsum );    
 	free( particles );
-//	cudaFree(d_particles);
-//	cudaFree(sorted_particles);
 	free(pos);
 	free(vel);
 	free(acc);
-	free(d_pos_host);
-	free(d_vel_host);
-	free(d_acc_host);
-	free(bin_start_host);
-	free(bin_end_host);
-	free(sorted_pos_host);
-	free(sorted_vel_host);
-	free(sorted_acc_host);
-	free(bin_index_host);
-	free(particle_index_host);
 	cudaFree(d_pos);
 	cudaFree(d_vel);
 	cudaFree(d_acc);
